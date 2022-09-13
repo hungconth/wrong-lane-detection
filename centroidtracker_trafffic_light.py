@@ -76,7 +76,7 @@ class CentroidTracker:
         if len(self.objects) == 0:
             for i in range(0, len(inputCentroids)):
                 self.register(inputCentroids[i], inputRects[i])  # CHANGE
-            
+        
         
         # otherwise, are are currently tracking objects so we need to
         # try to match the input centroids to existing object
