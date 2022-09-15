@@ -3,7 +3,6 @@ from scipy.spatial import distance as dist
 from collections import OrderedDict
 import numpy as np
 
-
 class CentroidTracker:
     def __init__(self, maxDisappeared=50, maxDistance=50):
         # initialize the next unique object ID along with two ordered
@@ -64,7 +63,7 @@ class CentroidTracker:
         inputCentroids = np.zeros((len(rects), 2), dtype="int")
         inputRects = []
         # loop over the bounding box rectangles
-        for (i, (startX, startY, endX, endY)) in enumerate(rects):
+        for (i, (startX, startY, endX, endY, Lb)) in enumerate(rects):
             # use the bounding box coordinates to derive the centroid
             cX = int((startX + endX) / 2.0)
             cY = int((startY + endY) / 2.0)
@@ -76,42 +75,42 @@ class CentroidTracker:
         if len(self.objects) == 0:
             for i in range(0, len(inputCentroids)):
                 self.register(inputCentroids[i], inputRects[i])  # CHANGE
-        
+            
         
         # otherwise, are are currently tracking objects so we need to
         # try to match the input centroids to existing object
         # centroids
         else:
             # grab the set of object IDs and corresponding centroids
-            print("obj_centroid_old")
-            print(inputCentroids)
+            # print("obj_centroid_old")
+            # print(inputCentroids)
             objectIDs = list(self.objects.keys())
             objectCentroids = list(self.objects.values())
-            print("obj_id")
-            print(objectIDs)           
-            print("obj_centroid")
-            print(objectCentroids)
+            # print("obj_id")
+            # print(objectIDs)           
+            # print("obj_centroid")
+            # print(objectCentroids)
             # compute the distance between each pair of object
             # centroids and input centroids, respectively -- our
             # goal will be to match an input centroid to an existing
             # object centroid
             D = dist.cdist(np.array(objectCentroids), inputCentroids)
-            print("D")
-            print(D)
+            # print("D")
+            # print(D)
             # in order to perform this matching we must (1) find the
             # smallest value in each row and then (2) sort the row
             # indexes based on their minimum values so that the row
             # with the smallest value as at the *front* of the index
             # list
             rows = D.min(axis=1).argsort()
-            print("rows")
-            print(rows)
+            # print("rows")
+            # print(rows)
             # next, we perform a similar process on the columns by
             # finding the smallest value in each column and then
             # sorting using the previously computed row index list
             cols = D.argmin(axis=1)[rows]
-            print("cols")
-            print(cols)
+            # print("cols")
+            # print(cols)
             # in order to determine if we need to update, register,
             # or deregister an object we need to keep track of which
             # of the rows and column indexes we have already examined
@@ -150,6 +149,7 @@ class CentroidTracker:
             unusedRows = set(range(0, D.shape[0])).difference(usedRows)
             unusedCols = set(range(0, D.shape[1])).difference(usedCols)
 
+            
             # in the event that the number of object centroids is
             # equal or greater than the number of input centroids
             # we need to check and see if some of these objects have

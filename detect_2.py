@@ -2,6 +2,7 @@ import argparse
 from itertools import count
 import time
 from pathlib import Path
+from typing import List
 
 import cv2
 import torch
@@ -19,8 +20,11 @@ from utils.plots import plot_one_box
 from utils.torch_utils import select_device, load_classifier, time_synchronized, TracedModel
 
 from centroidtracker import CentroidTracker
+from detect_color_traffic_light import *
 
 tracker = CentroidTracker(maxDisappeared=80, maxDistance=90)
+
+
 
 def Safe_Erea():
     x1, y1 = 100, 100
@@ -31,11 +35,28 @@ def Safe_Erea():
     return Erea
 
 
-def Time_Traffic_light(i):
-    if( (i // 100) % 2 == 0 ):
+
+
+def Time_Traffic_light(box, img):
+    x1, y1, x2, y2, Lb = box
+    x1 = int(x1)
+    y1 = int(y1)
+    x2 = int(x2)
+    y2 = int(y2)
+    print(box)
+    im = img[ y1:y2, x1:x2]
+    key = Predicted(im)
+    cv2.imshow("im", im)
+    cv2.waitKey(1)
+
+    print(key)
+    if( key == "red" or key == "yellow"):
         return True
     else:
         return False
+
+def cmp(e):
+    return e[1]
 
 def Line_traffic(input1, input2):
     x1, y1 = input1
@@ -108,9 +129,8 @@ def detect(save_img=False):
     old_img_b = 1
 
     t0 = time.time()
-    count_time = 0
     for path, img, im0s, vid_cap in dataset:
-        count_time += 1
+        print(im0s.shape)
         img = torch.from_numpy(img).to(device)
         img = img.half() if half else img.float()  # uint8 to fp16/32
         img /= 255.0  # 0 - 255 to 0.0 - 1.0
@@ -143,7 +163,6 @@ def detect(save_img=False):
         if classify:
             pred = apply_classifier(pred, modelc, img, im0s)
 
-
         rects = []
 
         # Process detections
@@ -152,7 +171,6 @@ def detect(save_img=False):
                 p, s, im0, frame = path[i], '%g: ' % i, im0s[i].copy(), dataset.count
             else:
                 p, s, im0, frame = path, '', im0s, getattr(dataset, 'frame', 0)
-            print("s: ", s)
             p = Path(p)  # to Path
             save_path = str(save_dir / p.name)  # img.jpg
             txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset.mode == 'image' else f'_{frame}')  # img.txt
@@ -175,12 +193,13 @@ def detect(save_img=False):
                         line = (cls, *xywh, conf) if opt.save_conf else (cls, *xywh)  # label format
                         with open(txt_path + '.txt', 'a') as f:
                             f.write(('%g ' * len(line)).rstrip() % line + '\n')
-                    bb = [int(xyxy[0]), int(xyxy[1]), int(xyxy[2]), int(xyxy[3])]
+                    bb = [int(xyxy[0]), int(xyxy[1]), int(xyxy[2]), int(xyxy[3]), int(cls)]
                     bb = np.array(bb)
                     rects.append(bb)
-
                     if save_img or view_img:  # Add bbox to image
                         label = f'{names[int(cls)]} {conf:.2f}'
+                        if int(cls) == 9:
+                            continue
                         plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1)
 
 
@@ -191,7 +210,6 @@ def detect(save_img=False):
 
 
             # Stream results
-            view_img = True
             if view_img:
                 cv2.imshow(str(p), im0)
                 cv2.waitKey(1)  # 1 millisecond
@@ -226,14 +244,31 @@ def detect(save_img=False):
 
         theta1, theta2, theta3 = Line_traffic(Temp["1"][1], Temp["1"][2])
 
-        print("i: ", i)
+        List_traffic_light = []
+        for (objectId, bbox) in objects.items():
+            x1, y1, x2, y2, Lb = bbox
+            x1 = int(x1)
+            y1 = int(y1)
+            x2 = int(x2)
+            y2 = int(y2)            
+            if(int(Lb) == 9):
+                List_traffic_light.append(bbox)
+        List_traffic_light.sort(key = cmp)
 
-        if Time_Traffic_light(count_time):
+        # tmp = List_traffic_light[0]
+        # x1, y1, x2, y2, Lb = tmp
+        # x1 = int(x1)
+        # y1 = int(y1)
+        # x2 = int(x2)
+        # y2 = int(y2)           
+        # cv2.rectangle(im0s, (x1, y1), (x2, y2), (0, 0, 255), -1)
+
+        if Time_Traffic_light(List_traffic_light[0], im0s):
             Point_1 = (0, int(-theta3/theta2))
             Point_2 = (im0s.shape[1], int(-(im0s.shape[1]*theta1 + theta3)/theta2))
             cv2.line(im0s, Point_1, Point_2, (0, 255, 255), 5)
             for (objectId, bbox) in objects.items():
-                x1, y1, x2, y2 = bbox
+                x1, y1, x2, y2, Lb = bbox
                 x1 = int(x1)
                 y1 = int(y1)
                 x2 = int(x2)
@@ -243,23 +278,28 @@ def detect(save_img=False):
                 ct_y = int((y1+y2)/2)
 
                 if( theta1 *ct_x + theta2 * ct_y + theta3 < 0):
-                    cv2.rectangle(im0s, (x1, y1), (x2, y2), (0, 0, 255), 2)
-                    text = "ID: {}".format(objectId)
-                    cv2.putText(im0s, text, (x1, y1-5), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1,(0, 0, 255) , 1)  
+                    
+                    text = "ID: {}".format(objectId) + f'{names[int(Lb)]}'
+                    # cv2.rectangle(im0s, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                    # cv2.putText(im0s, text, (x1, y1-5), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1,(0, 0, 255) , 1, lineType=cv2.LINE_AA)  
+
+                    plot_one_box([x1, y1, x2, y2], im0s, label=text, color=(0, 0, 255), line_thickness=1)
                 else:
-                    cv2.rectangle(im0s, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                    text = "ID: {}".format(objectId)
-                    cv2.putText(im0s, text, (x1, y1-5), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1,(0, 255, 0), 1)  
+                    text = "ID: {}".format(objectId) + f'{names[int(Lb)]}'
+
+                    # cv2.rectangle(im0s, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    # cv2.putText(im0s, text, (x1, y1-5), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1,(0, 255, 0), 1, lineType=cv2.LINE_AA)  
+
+                    plot_one_box([x1, y1, x2, y2], im0s, label=text, color=(0, 255, 0), line_thickness=1)
         else:
             for (objectId, bbox) in objects.items():
-                x1, y1, x2, y2 = bbox
+                x1, y1, x2, y2, Lb = bbox
                 x1 = int(x1)
                 y1 = int(y1)
                 x2 = int(x2)
                 y2 = int(y2)
-                cv2.rectangle(im0s, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                text = "ID: {}".format(objectId)
-                cv2.putText(im0s, text, (x1, y1-5), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (0, 255, 0), 1) 
+                text = "ID: {}".format(objectId) + f'{names[int(Lb)]}'
+                plot_one_box([x1, y1, x2, y2], im0s, label=text, color=(0, 0, 255), line_thickness=1)
 
 
         cv2.imshow("im0", im0s)
@@ -299,7 +339,8 @@ def detect(save_img=False):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', nargs='+', type=str, default='yolov7.pt', help='model.pt path(s)')
-    parser.add_argument('--source', type=str, default=r"./img/Trafficc.mp4" , help='source')  # file/folder, 0 for webcam
+    parser.add_argument('--source', type=str, default=r"./img/IMG_0266.JPG" , help='source')  # file/folder, 0 for webcam
+    # parser.add_argument('--source', type=str, default=r"./img/trafic_light.jpg" , help='source')  # file/folder, 0 for webcam
     parser.add_argument('--img-size', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.25, help='object confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.45, help='IOU threshold for NMS')
